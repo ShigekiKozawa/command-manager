@@ -2,6 +2,7 @@
   // 定数
   const DEFAULT_NAME = 'name';
   const DEFAULT_COMMAND = 'Command';
+  const MAX_NAME_LENGTH = 30;
   
   // 要素
   const addTab = document.createElement('div');
@@ -44,7 +45,7 @@
       chrome.storage.local.get('tabs', (result) => {
         const tabList = result.tabs || [];
         tabList.forEach(tab => {
-          const newTab = createTab(tab.index);
+          const newTab = createTab(tab.index, tab.name);
           const newBlock = document.createElement('div');
           newBlock.className = 'command-manager-block js-command-block';
           newBlock.setAttribute('data-block-index', tab.index);
@@ -53,31 +54,37 @@
             const newField = createField(field.name, field.command);
             newBlock.appendChild(newField);
           });
-
-          if(tab.index === 1) {
+  
+          if (tab.index === 1) {
             newBlock.classList.add('is-active');
             newTab.classList.add('is-active');
           }
-
+  
           commandContainer.appendChild(newBlock);
           tabWrap.appendChild(newTab);
         });
         tabWrap.appendChild(addTab);
-
         resolve();
       });
     });
   };
 
   // タブを生成する
-  const createTab = (index) => {
+  const createTab = (index, name = `Tab ${index}`) => {
     const newTab = document.createElement('div');
     newTab.className = 'command-manager-tab js-tab';
     newTab.setAttribute('data-tab-index', index);
-    newTab.textContent = `Tab ${index}`;
+  
+    const tabInput = document.createElement('input');
+    tabInput.type = 'text';
+    tabInput.className = 'command-manager-tab-input js-tab-input';
+    tabInput.value = name;
+    tabInput.setAttribute('readonly', true);
+  
     const deleteIcon = document.createElement('span');
     deleteIcon.className = 'command-manager-tab-delete js-tab-delete';
-
+  
+    newTab.appendChild(tabInput);
     newTab.appendChild(deleteIcon);
   
     return newTab;
@@ -85,10 +92,13 @@
 
   // フィールドを生成する
   const createField = (name = DEFAULT_NAME, command = DEFAULT_COMMAND) => {
+    const truncatedName = name.length > MAX_NAME_LENGTH ? name.slice(0, MAX_NAME_LENGTH) + '...' : name;
+  
     const newField = document.createElement('div');
     newField.className = 'command-manager-field';
-    newField.innerHTML = fieldElement(name, command);
-
+    newField.innerHTML = fieldElement(truncatedName, command);
+    newField.querySelector('.js-name-input').setAttribute('data-full-text', name); // フルネームを設定
+  
     return newField;
   };
   
@@ -120,22 +130,23 @@
     trigger.addEventListener('click', () => {
       tabs = Array.from(document.getElementsByClassName('js-tab'));
       commandBlocks = Array.from(document.getElementsByClassName('js-command-block'));
-
+  
       const newTabCount = tabs.length + 1;
       const newTab = createTab(newTabCount);
       const newCommandBlock = document.createElement('div');
       newCommandBlock.className = 'command-manager-block js-command-block';
       newCommandBlock.setAttribute('data-block-index', newTabCount);
       const newField = createField();
-
+  
       tabContainer.insertBefore(newTab, trigger);
       newCommandBlock.appendChild(newField);
       commandContainer.appendChild(newCommandBlock);
-
+  
       chrome.storage.local.get({ tabs: [] }, (result) => {
         const tabList = result.tabs;
         const newTabData = {
           index: newTabCount,
+          name: newTab.querySelector('.js-tab-input').value,
           fields: [{
             name: DEFAULT_NAME,
             command: DEFAULT_COMMAND,
@@ -164,22 +175,24 @@
       newTab.click();
       onSwitchTab();
       onClickDeleteTab();
-      onClickEditCommand();
+      onClickEditTab();
+      onClickEdit();
       onClickDeleteCommand();
       onClickCopyCommand();
     });
   };
 
   // Editボタンをクリックしたときの処理
-  const onClickEditCommand = () => {
+  const onClickEdit = () => {
     editTriggers = Array.from(document.getElementsByClassName('js-edit-trigger'));
   
     editTriggers.forEach((trigger) => {
       if (!trigger.dataset.listenerAttached) {
         trigger.dataset.listenerAttached = true;
+  
         trigger.addEventListener('click', function() {
           resetFields();
-    
+  
           const parentField = trigger.closest('.command-manager-field');
           const inputs = parentField.querySelectorAll('input');
           const updateButton = parentField.querySelector('.js-update-trigger');
@@ -187,20 +200,26 @@
           const activeBlockKey = Number(activeBlock.getAttribute('data-block-index'));
           const activeEditTriggers = Array.from(activeBlock.querySelectorAll('.js-edit-trigger'));
           const index = activeEditTriggers.indexOf(trigger);
-    
+          const originalName = inputs[0].value;
+          const originalCommand = inputs[1].value;
+  
           addClass(trigger, 'is-hidden');
           addClass(updateButton, 'is-active');
-    
+  
           inputs.forEach(input => {
             input.removeAttribute('readonly');
+            if(input.classList.contains('js-name-input')) {
+              const originalText = input.getAttribute('data-full-text') || input.value;
+              input.value = originalText;
+            }
             input.focus();
           });
-    
+  
           const newUpdateButton = updateButton.cloneNode(true);
           updateButton.parentNode.replaceChild(newUpdateButton, updateButton);
-    
+  
           newUpdateButton.addEventListener('click', function () {
-            onClickUpdate(newUpdateButton, inputs, trigger, activeBlockKey, index);
+            onClickUpdate(newUpdateButton, originalName, originalCommand, inputs, trigger, activeBlockKey, index);
           }, { once: true });
         });
       }
@@ -208,32 +227,45 @@
   };
 
   // Updateボタンをクリックしたときの処理
-  const onClickUpdate = (updateButton, inputs, trigger, activeBlockKey, index) => {
+  const onClickUpdate = (updateButton, originalName, originalCommand, inputs, trigger, activeBlockKey, index) => {
     let tabs;
   
     chrome.storage.local.get({ tabs: [] }, (result) => {
       tabs = result.tabs;
-
+  
       const activeBlockData = tabs.find(tab => tab.index === activeBlockKey);
       const fieldData = activeBlockData.fields[index];
   
-      inputs.forEach(input => {
+      inputs.forEach((input, index) => {
         const originalValue = input.value;
         const trimmedValue = originalValue.trim();
+
+        if (trimmedValue.length === 0) {
+          alert("Please enter at least one character.");
+          index === 0 ? input.value = originalName : input.value = originalCommand;
+          input.setAttribute('readonly', true);
+          return;
+        }
   
         input.value = trimmedValue;
   
         if (input.classList.contains('js-name-input')) {
-          fieldData.label = trimmedValue; // ラベルデータを更新
-        } else {
-          fieldData.command = trimmedValue; // コマンドデータを更新
+          fieldData.name = trimmedValue;
+  
+          if (trimmedValue.length > MAX_NAME_LENGTH) {
+            input.setAttribute('data-full-text', trimmedValue);
+            input.value = trimmedValue.slice(0, MAX_NAME_LENGTH) + '...';
+          } else {
+            input.removeAttribute('data-full-text');
+          }
+        } else if (input.classList.contains('js-command-input')) {
+          fieldData.command = trimmedValue;
         }
   
         input.setAttribute('readonly', true);
       });
   
       chrome.storage.local.set({ tabs: tabs }, () => {});
-  
       removeClass(updateButton, 'is-active');
       removeClass(trigger, 'is-hidden');
     });
@@ -254,7 +286,7 @@
           const fields = activeBlock.querySelectorAll('.command-manager-field');
 
           if (fields.length <= 1) {
-            alert('これ以上削除できません！');
+            alert("You can't delete any more!");
             return;
           }
 
@@ -265,14 +297,11 @@
           chrome.storage.local.get({ tabs: [] }, (result) => {
             const tabs = result.tabs;
             const activeBlockData = tabs.find(tab => tab.index === activeBlockKey);
-            console.log(activeBlockData, fieldIndex, activeBlockData && fieldIndex > -1)
     
             if (activeBlockData && fieldIndex > -1) {
               activeBlockData.fields.splice(fieldIndex, 1);
 
-              chrome.storage.local.set({ tabs: tabs }, () => {
-                console.log(`フィールドがストレージから削除されました。タブキー: ${activeBlockKey}, インデックス: ${fieldIndex}`);
-              });
+              chrome.storage.local.set({ tabs: tabs }, () => {});
             }
           });
         });
@@ -286,20 +315,22 @@
 
     copyTriggers.forEach((trigger) => {
       trigger.addEventListener('click', async function() {
-        const commandLabel = trigger.closest('.command-manager-label');
-        const commandText = trigger.value;
+        if(trigger.readOnly === true) {
+          const commandLabel = trigger.closest('.command-manager-label');
+          const commandText = trigger.value;
 
-        try {
-          if (commandText.length > 0) {
-            await navigator.clipboard.writeText(commandText);
+          try {
+            if (commandText.length > 0) {
+              await navigator.clipboard.writeText(commandText);
 
-            commandLabel.classList.add('is-copied');
-            setTimeout(() => {
-              commandLabel.classList.remove('is-copied');
-            }, 1500);
+              commandLabel.classList.add('is-copied');
+              setTimeout(() => {
+                commandLabel.classList.remove('is-copied');
+              }, 1500);
+            }
+          } catch (err) {
+            console.error(`Copy is failed: ${err}`);
           }
-        } catch (err) {
-          console.error(`Copy is failed: ${err}`);
         }
       });
     });
@@ -347,7 +378,7 @@
         chrome.storage.local.set({ tabs: tabs }, () => {});
       });
   
-      onClickEditCommand();
+      onClickEdit();
       onClickDeleteCommand(); 
       onClickCopyCommand();
     });
@@ -372,10 +403,87 @@
           block.classList.remove('is-active');
         });
   
-        console.log(clickedTabIndex, target)
         tab.classList.add('is-active');
         target.classList.add('is-active');
       });
+    });
+  };
+
+  // テキストの幅を取得する
+  const getTextWidth = (text) => {
+    let width = 0;
+    for (let char of text) {
+      if (char.match(/[ -~]/)) {
+        width += .55;
+      } else {
+        width += 1;
+      }
+    }
+    return width;
+  };
+
+  // タブ名の編集を有効にする
+  const onClickEditTab = () => {
+    const tabInputs = document.querySelectorAll('.js-tab-input');
+    let originalName;
+  
+    tabInputs.forEach(tabInput => {
+      if (!tabInput.dataset.listenerAttached) {
+        tabInput.dataset.listenerAttached = 'true';
+
+        const resizeInput = () => {
+          const textWidth = getTextWidth(tabInput.value);
+          tabInput.style.width = `${textWidth + .5}em`;
+        };
+        
+        resizeInput();
+
+        tabInput.addEventListener('dblclick', () => {
+          originalName = tabInput.value.trim();
+          tabInput.removeAttribute('readonly');
+          tabInput.focus();
+
+          const updateInputWidth = (input) => {
+            const textWidth = getTextWidth(input.value);
+            input.style.width = `${textWidth + .5}em`;
+          }
+          tabInput.addEventListener('input', () => {
+            updateInputWidth(tabInput);
+          });
+
+          const saveTabName = () => {
+            const newName = tabInput.value.trim();
+            
+            if (newName.length === 0) {
+              alert("Please enter at least one character.");
+              tabInput.value = originalName;
+              tabInput.setAttribute('readonly', true);
+              return;
+            }
+  
+            resizeInput();
+            tabInput.setAttribute('readonly', true);
+                
+            const tabElement = tabInput.closest('.js-tab');
+            const tabIndex = Number(tabElement.getAttribute('data-tab-index'));
+            chrome.storage.local.get({ tabs: [] }, (result) => {
+              const tabs = result.tabs || [];
+              const tabData = tabs.find(tab => tab.index === tabIndex);
+              if (tabData) {
+                tabData.name = newName;
+                chrome.storage.local.set({ tabs: tabs }, () => {});
+              }
+            });
+          };
+  
+          tabInput.addEventListener('blur', saveTabName);
+          tabInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              tabInput.blur();
+            }
+          });
+        });
+      }
     });
   };
 
@@ -398,7 +506,7 @@
   
     confirmButton.addEventListener('click', () => {
       if (tabs.length <= 1) {
-        alert('これ以上削除できません！');
+        alert("You can't delete any more!");
         alertContainer.classList.remove('is-show');
         alertContainer.innerHTML = '';
         return;
@@ -444,42 +552,16 @@
       });
     });
   };
-
-  const organizeStorage = () => {
-    chrome.storage.local.get('tabs', (result) => {
-      let tabList = result.tabs || [];
-  
-      // データの整理
-      tabList = tabList.map((tabData, index) => {
-        return {
-          ...tabData,
-          index: index + 1,          // indexを数値に変更
-          fields: tabData.fields.map(field => {
-            return {
-              command: field.command,
-              name: field.label        // labelをnameに変更
-            };
-          })
-        };
-      });
-  
-      // 更新されたデータをストレージに保存
-      chrome.storage.local.set({ tabs: tabList }, () => {
-        console.log('ストレージが整理されました');
-        console.log(JSON.stringify(tabList, null, 2));  // 整理後のデータを確認用にコンソールに出力
-      });
-    });
-  };
   
   window.addEventListener('DOMContentLoaded', async () => {
     await loadSettings();
     onSwitchTab();
     onClickAddTab();
+    onClickEditTab();
     onClickDeleteTab();
     onClickAddCommand();
-    onClickEditCommand();
+    onClickEdit();
     onClickDeleteCommand();
     onClickCopyCommand();
-    // organizeStorage();
   });
 }())

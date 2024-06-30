@@ -1,5 +1,7 @@
 @charset "UTF-8";
-
+html {
+    font-size: 62.5%;
+} 
 .command-manager {
     margin: 10px 15px;
     width: 500px;
@@ -19,7 +21,6 @@
     }
     &-container {
         padding-top: 20px;
-        border-top: 1px solid #777;
     }
     &-block {
         position: relative;
@@ -30,19 +31,11 @@
     }
     &-tab {
         margin-right: 5px;
-        padding: 8px 22px 8px 10px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #fff;
         background-color: #333;
-        border: 0;
-        border-radius: 3px 3px 0 0;
-        cursor: pointer;
         transition: background-color .3s;
         position: relative;
         &.is-active {
-            color: #000;
-            background-color: #fff;
+            cursor: pointer;
             .command-manager-tab {
                 display: none;
                 &-delete {
@@ -51,12 +44,28 @@
                         background-color: #333;
                     }
                 }
+                &-input {
+                    color: #000;
+                    background-color: #fff;
+                }
             }
         }
         &-wrap {
+            width: 100%;
             display: flex;
             justify-content: flex-start;
             position: relative;
+            overflow-x: scroll;
+            &::-webkit-scrollbar {
+                width: 5px;
+                height: 5px;
+            }
+            &::-webkit-scrollbar-track {
+                background-color: #777;
+            }
+            &::-webkit-scrollbar-thumb {
+                background-color: #fff;
+            }
         }
         &-add {
             padding: 5px 10px;
@@ -106,6 +115,30 @@
                 transform: rotate(135deg);
             }
         }
+        &-input {
+            padding: 12px 22px 12px 10px;
+            display: inline-block;
+            width: fit-content;
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            border: none;
+            border-radius: 3px 3px 0 0;
+            background-color: #333;
+            position: relative;
+            box-sizing: content-box;
+            transition: background-color .3s;
+            &::placeholder {
+                color: #ccc;
+            }
+            &:focus {
+                outline: none;
+            }
+            &:not([readonly]) {
+                border-color: #777;
+                cursor: auto;
+            }
+        }
     }
     &-field {
         padding-top: 5px;
@@ -119,11 +152,6 @@
         position: relative;
         &.label-command {
             transition: background-color .3s;
-            &:hover {
-                .command-manager-command-input {
-                    background-color: #777;
-                }
-            }
             &::after {
                 content: "";
                 width: 100%;
@@ -186,7 +214,6 @@
             border: none;
             background-color: #333;
             border-radius: 4px;
-            cursor: pointer;
             position: relative;
             transition: background-color .3s;
             &::placeholder {
@@ -198,6 +225,12 @@
             &:not([readonly]) {
                 border-color: #777;
                 cursor: auto;
+            }
+            &[readonly] {
+                cursor: pointer;
+                &:hover {
+                    background-color: #777;
+                }
             }
         }
     }
